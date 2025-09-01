@@ -5,15 +5,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refreshsecretkey';
 const JWT_RESET_SECRET = process.env.JWT_RESET_SECRET || 'resetsecretkey';
 const sendMail = require('../SendMail/SendMail');
+const { validatePassword } = require('../Utils/validators');
 
 const register = async (req, res) => {
   const { name, email, password } = req.body;
   const existingUser = await User.findOne({ where: { email } });
+  const { valid, message: passwordError } = validatePassword(password);
 
-  if (password.length < 6) {
-    return res
-      .status(400)
-      .json({ message: 'Password must be at least 6 characters long' });
+  if (!valid) {
+    return res.status(400).json({ message: passwordError });
   }
 
   if (existingUser) {
@@ -25,6 +25,7 @@ const register = async (req, res) => {
     name,
     email,
     password: hashedPassword,
+    isActivated: false,
   });
 
   const activationToken = jwt.sign({ id: user.id }, JWT_SECRET, {
@@ -53,11 +54,12 @@ const activate = async (req, res) => {
     return res.status(400).json({ message: 'Invalid activation link' });
   }
 
-  user.isActive = true;
+  user.isActivated = true;
   user.activationToken = null;
   await user.save();
 
   res.status(200).json({ message: 'Account activated successfully' });
+  res.redirect('/profile');
 };
 const login = async (req, res) => {
   const { email, password } = req.body;
@@ -87,7 +89,7 @@ const login = async (req, res) => {
   user.refreshToken = refreshToken;
   await user.save();
 
-  res.coockie('refreshToken', refreshToken, {
+  res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Strict',
@@ -97,7 +99,7 @@ const login = async (req, res) => {
   res.json({ accessToken });
 };
 const logout = async (req, res) => {
-  const { refreshToken } = res.coockies;
+  const { refreshToken } = req.cookies;
 
   if (!refreshToken) {
     return res.sendStatus(204);
@@ -114,7 +116,7 @@ const logout = async (req, res) => {
   res.sendStatus(204);
 };
 const refresh = async (req, res) => {
-  const { refreshToken } = req.coockies;
+  const { refreshToken } = req.cookies;
 
   if (!refreshToken) {
     return res.status(401).json({ message: 'No refresh token provided' });
