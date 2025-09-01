@@ -54,11 +54,14 @@ const activate = async (req, res) => {
     return res.status(400).json({ message: 'Invalid activation link' });
   }
 
+  if (user.isActivated) {
+    res.redirect('/login');
+  }
+
   user.isActivated = true;
   user.activationToken = null;
   await user.save();
 
-  res.status(200).json({ message: 'Account activated successfully' });
   res.redirect('/profile');
 };
 const login = async (req, res) => {
@@ -69,7 +72,7 @@ const login = async (req, res) => {
     return res.status(400).json({ message: 'Invalid email or password' });
   }
 
-  if (!user.isActive) {
+  if (!user.isActivated) {
     return res.status(400).json({ message: 'Account not activated' });
   }
 
@@ -158,17 +161,38 @@ const forgotpassword = async (req, res) => {
     `Click the link to reset your password: ${resetUrl}`,
   );
 
-  res.json({ message: 'Password reset link sent to your email' });
+  res.status(200).send(`
+      <html>
+        <head><title>Запит прийнято</title></head>
+        <body>
+          <h1>Помилання на оновлення паролю надіслано на вашу пошту</h1>
+        </body>
+      </html>
+    `);
 };
 const resetpassword = async (req, res) => {
   const { token, password, confirmPassword } = req.body;
+  const { valid, message: passwordError } = validatePassword(password);
 
   if (!token) {
-    return res.status(400).json({ message: 'Missing token' });
+    return res.status(400).send(`
+      <html>
+        <head><title>Помилка скидання паролю</title></head>
+        <body>
+          <h1>Токен для скидання паролю відсутній</h1>
+          <p>Будь ласка, запросіть нове посилання для скидання паролю.</p>
+          <a href="/forgot-password">Запросити нове посилання</a>
+        </body>
+      </html>
+    `);
   }
 
   if (password !== confirmPassword) {
     return res.status(400).json({ message: 'Passwords do not match' });
+  }
+
+  if (!valid) {
+    return res.status(400).json({ message: passwordError });
   }
 
   try {
@@ -189,7 +213,15 @@ const resetpassword = async (req, res) => {
     user.resetToken = null;
     await user.save();
 
-    res.json({ message: 'Password successfully reset' });
+    res.send(`
+      <html>
+        <head><title>Пароль оновлено</title></head>
+        <body>
+          <h1>Ваш пароль успішно оновлено</h1>
+          <a href="/login">Увійти з новим паролем</a>
+        </body>
+      </html>
+    `);
   } catch (err) {
     res.status(401).json({ message: 'Invalid or expired token' });
   }
